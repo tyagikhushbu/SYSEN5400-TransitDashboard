@@ -1,0 +1,160 @@
+library(archr)
+library(dplyr)
+library(readr)
+
+# Enumerate D1 (DS)
+# D1 alternatives: D1_1 = Lyft, D1_2 = Uber, D1_3 = Citibike, D1_4 = MTA
+a1 = enumerate_ds(n = 4, k = 4, .did = 1) %>%
+  # kmin = 1: filter out case where all are zero
+  filter(!(d1_1 == 0 & d1_2 == 0 & d1_3 == 0 & d1_4 == 0))
+
+# Three cases governing D2, D3, and D4 arise, based on D1 enumeration
+# Bind rows to combine all cases
+# D2 (SF) alternatives: individual, shared, hybrid (type of ride)
+# D3 (SF) alternatives: mandatory, optional, none (tipping)
+# D4 (SF) alternatives: 10, 50, dynamics (# of vehicles)
+a2 = bind_rows(
+  # Case 1: (choose Lyft, Uber, and/or MTA) AND (do not choose Citibike)
+  # only have D2 and D3
+  a1 %>%
+    filter(!(d1_1 == 0 & d1_2 == 0 & d1_4 == 0) & !(d1_3 == 1)) %>%
+    expand_grid(
+      enumerate_sf(n = 3, .did = 2),
+      enumerate_sf(n = 3, .did = 3)
+    ),
+  # Case 2: (choose Lyft, Uber, and/or MTA) AND (choose Citibike)
+  # have D2, D3, and D4
+  a1 %>%
+    filter(!(d1_1 == 0 & d1_2 == 0 & d1_4 == 0) & (d1_3 == 1)) %>%
+    expand_grid(
+      enumerate_sf(n = 3, .did = 2),
+      enumerate_sf(n = 3, .did = 3),
+      enumerate_sf(n = 3, .did = 4)
+    ),
+  # Case 3: (do not choose Lyft, Uber, or MTA) AND (choose Citibike)
+  # only have D4
+  a1 %>%
+    filter((d1_1 == 0 & d1_2 == 0 & d1_4 == 0) & (d1_3 == 1)) %>%
+    expand_grid(
+      enumerate_sf(n = 3, .did = 4)
+    )
+)
+
+# Enumerate D5 (SF)
+# D5 alternatives: fixed fare, surge pricing, subscription based
+a5 = a2 %>% expand_grid(
+  enumerate_sf(n = 3, .did = 5))
+
+# Enumerate D6 (SF)
+# D6 alternatives: digital wallet, credit card, pay-per-mile
+# Two cases governing D6, based on D5 enumeration
+# Bind rows to combine cases
+a6 = bind_rows(
+  # Case 1: if D5 is fixed fare or surge pricing -> all three alternatives
+  a5 %>%
+    filter(!(d5 == 2)) %>%
+    expand_grid(
+      enumerate_sf(n = 3, .did = 6)
+    ),
+  # Case 2: if D5 is subscription based -> first two alternatives only
+  a5 %>%
+    filter((d5 == 2)) %>%
+    expand_grid(
+      enumerate_sf(n = 2, .did = 6)
+    )
+  )
+
+# Enumerate D7 (SF)
+# D7 alternatives: first-come, dynamic optimization, priority-based
+a7 = a6 %>% expand_grid(
+  enumerate_sf(n = 3, .did = 7))
+
+# Enumerate D8 (SF)
+# D8 alternatives: fixed, dynamic, user-defined (service coverage)
+a8 = a7 %>% expand_grid(
+  enumerate_sf(n = 3, .did = 8))
+
+# Enumerate D9 (ASN)
+# D9 alternatives: existing roadways, dedicated lanes
+# Constraint: must assign each partner to at least one alternative
+# Mapping is dependent on the number of partners chosen in D1 (changes number on left side)
+# Four cases govern this enumeration (corresponding to 1, 2, 3, or 4 partners being chosen)
+# Case 1: one partner, n = 1, k = 2
+a9a = enumerate_assignment(n = 1, m = 2, k = 2, .did = 9) %>% 
+  filter(!(d9_a1_b1 == 0 & d9_a1_b2 == 0))
+# Case 2: two partners, n = 2, k = 4
+a9b = enumerate_assignment(n = 2, m = 2, k = 4, .did = 9) %>% 
+  filter(!(d9_a1_b1 == 0 & d9_a1_b2 == 0)) %>%
+  filter(!(d9_a2_b1 == 0 & d9_a2_b2 == 0))
+# Case 3: three partners, n = 3, k = 6
+a9c = enumerate_assignment(n = 3, m = 2, k = 6, .did = 9) %>% 
+  filter(!(d9_a1_b1 == 0 & d9_a1_b2 == 0)) %>%
+  filter(!(d9_a2_b1 == 0 & d9_a2_b2 == 0)) %>%
+  filter(!(d9_a3_b1 == 0 & d9_a3_b2 == 0))
+# Case 4: four partners, n = 4, k = 8
+a9d = enumerate_assignment(n = 4, m = 2, k = 8, .did = 9) %>% 
+  filter(!(d9_a1_b1 == 0 & d9_a1_b2 == 0)) %>%
+  filter(!(d9_a2_b1 == 0 & d9_a2_b2 == 0)) %>%
+  filter(!(d9_a3_b1 == 0 & d9_a3_b2 == 0)) %>%
+  filter(!(d9_a4_b1 == 0 & d9_a4_b2 == 0))
+# Bind rows to combine cases
+a9 = bind_rows(
+  # Case 1
+  a8 %>%
+    filter((d1_1 + d1_2 + d1_3 + d1_4) == 1) %>%
+    expand_grid(
+      a9a
+    ),
+  # Case 2
+  a8 %>%
+    filter((d1_1 + d1_2 + d1_3 + d1_4) == 2) %>%
+    expand_grid(
+      a9b
+    ),
+  # Case 3
+  a8 %>%
+    filter((d1_1 + d1_2 + d1_3 + d1_4) == 3) %>%
+    expand_grid(
+      a9c
+    ),
+  # Case 4
+  a8 %>%
+    filter((d1_1 + d1_2 + d1_3 + d1_4) == 4) %>%
+    expand_grid(
+      a9d
+    )
+)
+
+# Enumerate D10 (SF)
+# D10 alternatives: shortest path, AI-based, traffic-aware (routing)
+# Two cases governing D10, based on D9 enumeration
+# Case 1: any partner has been assigned to work on existing roadways --> all alternative are possible
+a10a = enumerate_sf(n = 3, .did = 10)
+# Case 2: no partner has been assigned to work on existing roadways --> only 1st and 2nd alternatives
+a10b = enumerate_sf(n = 2, .did = 10)
+# Bind rows to combine cases
+a10 = bind_rows(
+  # Case 1
+  a9 %>% filter(!((rowSums(data.frame(d9_a1_b1, d9_a2_b1, d9_a3_b1, d9_a4_b1), na.rm = TRUE)) == 0))  %>%
+  expand_grid(
+    a10a
+  ),
+  # Case 2
+  a9 %>% filter(rowSums(data.frame(d9_a1_b1, d9_a2_b1, d9_a3_b1,d9_a4_b1), na.rm = TRUE) == 0)  %>%
+  expand_grid(
+    a10b
+  )
+)
+
+# remove intermediate enumerations
+remove(a1, a2, a5, a6, a7, a8, a9a, a9b, a9c, a9d, a9, a10a, a10b)
+
+# sample data then remove large architecture
+data = sample_n(a10, 20000)
+remove(a10)
+
+# save data as csv
+write_csv(data, "sysarch_sample.csv")
+
+#### In further work, use the "data" data frame
+# data = read.csv("sysarch_sample.csv")
