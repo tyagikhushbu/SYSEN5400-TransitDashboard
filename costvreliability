@@ -1,0 +1,59 @@
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Load and compute
+archs <- read_csv("sysarch_sample_10000_rescaled.csv") %>%
+  mutate(
+    # Reconstruct true reliability from scaled safety
+    reliability = safety / 25,
+    
+    # Group reliability for vertical clustering (e.g., 9.3 → 9)
+    reliability_group = round(reliability * 10),
+    
+    # Cost function with some variation
+    cost = 5000 +
+      1000 * (d2 == 2) +
+      800  * (d7 == 2) +
+      600  * (d10 == 1 | d10 == 2) +
+      rnorm(n(), mean = 0, sd = 100)  # small noise for spread
+    
+  )
+# Remove any rows with missing or invalid values BEFORE plotting
+archs <- archs %>%
+  filter(
+    !is.na(cost),
+    !is.na(reliability_group),
+    is.finite(cost),
+    is.finite(reliability_group)
+  )
+
+# Pareto front: pick full rows (not just summarised values)
+pareto <- archs %>%
+  group_by(reliability_group) %>%
+  slice_min(cost, n = 1) %>%
+  ungroup() %>%
+  arrange(reliability_group)
+
+# Highlight 2 overall lowest cost Pareto points
+highlight <- pareto %>%
+  slice_min(cost, n = 2)
+
+# Plot
+p <- ggplot(archs, aes(x = reliability_group, y = cost)) +
+  geom_point(color = "black", size = 1.5, alpha = 0.8) +  # All architectures
+  geom_point(data = pareto, aes(x = reliability_group, y = cost),
+             color = "purple", size = 2) +                # Pareto front points
+  geom_line(data = pareto, aes(x = reliability_group, y = cost),
+            color = "orange", size = 1) +                 # Pareto line
+  geom_point(data = highlight, aes(x = reliability_group, y = cost),
+             color = "orange", size = 6) +                # GA-selected highlights
+  scale_x_continuous(breaks = unique(pareto$reliability_group)) +
+  labs(
+    x = "reliability",
+    y = "cost",
+    caption = "Figure: Comparison of Pareto fronts for cost vs. reliability"
+  ) +
+  theme_minimal()
+
+print(p)
