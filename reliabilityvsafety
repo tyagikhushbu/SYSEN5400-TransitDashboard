@@ -1,0 +1,58 @@
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Load and compute
+archs <- read_csv("sysarch_sample_10000_rescaled.csv") %>%
+  mutate(
+    reliability = safety / 25,
+    ride_match = case_when(
+      d2 == 0 ~ 0.82,
+      d2 == 1 ~ 0.76,
+      d2 == 2 ~ 0.88,
+      TRUE    ~ 0.80
+    ) + case_when(
+      d7 == 0 ~ 0.00,
+      d7 == 1 ~ 0.03,
+      d7 == 2 ~ 0.05,
+      TRUE    ~ 0.00
+    ),
+    
+    # Discretize ride match for vertical clustering
+    ride_match_group = round(ride_match * 100)  # e.g., 0.88 → 88
+  ) %>%
+  filter(
+    !is.na(ride_match), !is.na(reliability),
+    is.finite(ride_match), is.finite(reliability)
+  )
+
+# Pareto front: MAX reliability per ride_match group (upper envelope!)
+pareto <- archs %>%
+  group_by(ride_match_group) %>%
+  slice_max(reliability, n = 1) %>%
+  ungroup() %>%
+  arrange(ride_match_group)
+
+# Highlight 2 best (most reliable) Pareto points
+highlight <- pareto %>%
+  slice_max(reliability, n = 2)
+
+# Plot
+p <- ggplot(archs, aes(x = ride_match_group, y = reliability)) +
+  geom_point(color = "black", size = 1.5, alpha = 0.8) +                        # All designs
+  geom_point(data = pareto, aes(x = ride_match_group, y = reliability),
+             color = "purple", size = 2) +                                     # Pareto front
+  geom_line(data = pareto, aes(x = ride_match_group, y = reliability),
+            color = "orange", size = 1) +                                      # Pareto line
+  geom_point(data = highlight, aes(x = ride_match_group, y = reliability),
+             color = "orange", size = 6) +                                     # GA picks
+  scale_x_continuous(breaks = unique(pareto$ride_match_group)) +
+  labs(
+    x = "ride match efficiency",
+    y = "reliability",
+    caption = "Figure: Comparison of Pareto fronts for reliability vs. ride match efficiency"
+  ) +
+  theme_minimal() +
+  theme(plot.caption = element_text(hjust = 0.5))
+
+print(p)
