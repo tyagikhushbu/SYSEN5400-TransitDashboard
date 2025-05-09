@@ -1,0 +1,37 @@
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Load the updated architecture data with calculated metrics
+archs <- read_csv("sysarch_sample_10000_rescaled.csv")
+
+# Round safety to integers for column alignment
+archs <- archs %>%
+  mutate(safety_group = round(safety))
+
+# Compute Pareto front (minimum comfort per safety group)
+pareto <- archs %>%
+  group_by(safety_group) %>%
+  summarise(comfort = min(comfort), .groups = "drop") %>%
+  arrange(safety_group)
+
+# Select 2 finalist points: lowest comfort from Pareto front
+highlight <- pareto %>%
+  slice_min(comfort, n = 2)
+
+# Plot
+ggplot(archs, aes(x = safety_group, y = comfort)) +
+  geom_point(color = "black", size = 1.5, alpha = 0.8) +  # All architectures
+  geom_point(data = pareto, aes(x = safety_group, y = comfort),
+             color = "purple", size = 2) +                # Pareto points
+  geom_line(data = pareto, aes(x = safety_group, y = comfort),
+            color = "orange", size = 1) +                 # Pareto front
+  geom_point(data = highlight, aes(x = safety_group, y = comfort),
+             color = "orange", size = 6) +                # Highlight finalists
+  scale_x_continuous(breaks = unique(pareto$safety_group)) +
+  labs(
+    x = "safety",
+    y = "comfort",
+    caption = "Figure: Comparison of Pareto fronts for comfort vs. safety"
+  ) +
+  theme_minimal()
